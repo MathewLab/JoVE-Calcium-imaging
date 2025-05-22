@@ -1,0 +1,156 @@
+# Load required libraries
+library(ggplot2)
+library(readr)
+library(dplyr)
+# Read the data (same dataset used for heatmap)
+df <- read_csv("calcium_data_whole.csv")
+# Perform Mann-Whitney U test (Wilcoxon Rank Sum Test)
+mann_whitney_result <- wilcox.test(Normalized_Intensity ~ Sample, data = df)
+# Extract p-value and create label for significance
+p_value <- mann_whitney_result$p.value
+p_label <- ifelse(p_value < 0.001, "***", 
+                  ifelse(p_value < 0.01, "**", 
+                         ifelse(p_value < 0.05, "*", "ns")))
+# Create the boxplot with statistical annotation
+boxplot <- ggplot(df, aes(x = Sample, y = Normalized_Intensity, fill = Sample)) +
+  geom_boxplot(outlier.shape = NA, width = 0.6, alpha = 0.8) +  # Boxplot without outliers
+  geom_jitter(position = position_jitter(0.2), size = 1, alpha = 0.5) +  # Add jittered points
+  annotate("text", x = 1.5, y = max(df$Normalized_Intensity, na.rm = TRUE), 
+           label = paste("p =", round(p_value, 4), p_label), size = 5, color = "black") +  # Add p-value text annotation
+  labs(y = "Normalized Calcium Intensity", x = "", title = "Starved vs Fed") +
+  scale_fill_manual(values = c("blue", "red")) +  # Custom colors for Starved and Fed
+  theme_minimal(base_size = 16) +  
+  theme(
+    axis.text.x = element_text(size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14),
+    plot.title = element_text(size = 18, face = "bold"),
+    legend.position = "none"
+  )
+# Save the plot as high-resolution PNG & PDF
+ggsave("calcium_boxplot_mannwhitney_wholelarvae1_.png", plot = boxplot, width = 6, height = 8, dpi = 300)
+ggsave("calcium_boxplot_mannwhitney_wholeLarvae1.pdf", plot = boxplot, width = 6, height = 8, device = "pdf")
+
+
+# For heatmap
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Read the data
+df <- read_csv("calcium_data_whole.csv")
+
+# Define custom color scheme
+my_colors <- c("royalblue", "dodgerblue", "yellow", "magenta")
+breaks <- c(0, 0.5, 0.7, 0.85, 1)
+# Generate heatmap for the first 30 frames 
+df_30 <- df %>% filter(Time <= 30)
+heatmap_30 <- ggplot(df_30, aes(x = Time, y = Replicate, fill = Normalized_Intensity)) +
+  geom_tile() +  # No boundary lines between cells
+  scale_fill_gradientn(colors = my_colors, values = scales::rescale(breaks)) +  
+  labs(title = "Heatmap (First 30 Frames)", x = "Time (s)", y = "Replicate") +
+  facet_grid(Sample ~ .) +  # Facet by Sample (Starved vs Fed)
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "bottom",
+    panel.grid = element_blank(),  # Remove gridlines for a clean look
+    strip.background = element_blank(),  # Remove the background from facet labels
+    strip.text = element_text(size = 14, face = "bold"),  
+    panel.spacing = unit(0, "lines")  # 
+  ) +
+  scale_x_continuous(breaks = seq(0, 30, by = 5))
+
+# Save the first 30 frames heatmap
+ggsave("heatmap_first_30_framesW1.2_continuous_no_gap1_v2.png", plot = heatmap_30, width = 10, height = 6, dpi = 300)
+ggsave("heatmap_first_30_framesW1.2_continuous_no_gap1_v2.pdf", plot = heatmap_30, width = 10, height = 6)
+
+# Generate heatmap for the first 60 frames 
+df_60 <- df %>% filter(Time <= 60)
+heatmap_60 <- ggplot(df_60, aes(x = Time, y = Replicate, fill = Normalized_Intensity)) +
+  geom_tile() +  
+  scale_fill_gradientn(colors = my_colors, values = scales::rescale(breaks)) +  
+  labs(title = "Heatmap (First 60 Frames)", x = "Time (s)", y = "Replicate") +
+  facet_grid(Sample ~ .) +  # Facet by Sample (Starved vs Fed)
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "bottom",
+    panel.grid = element_blank(),  
+    strip.background = element_blank(), 
+    strip.text = element_text(size = 14, face = "bold"),  
+    panel.spacing = unit(0, "lines")  # 
+  ) +
+  scale_x_continuous(breaks = seq(0, 60, by = 10)) # 
+# Save the first 60 frames heatmap
+ggsave("heatmap_first_60_framesW1.2_continuous_no_gap1_v2.png", plot = heatmap_60, width = 10, height = 6, dpi = 300)
+ggsave("heatmap_first_60_framesW1.2_continuous_no_gap1_v2.pdf", plot = heatmap_60, width = 10, height = 6)
+# Generate heatmap for all frames 
+heatmap_all <- ggplot(df, aes(x = Time, y = Replicate, fill = Normalized_Intensity)) +
+  geom_tile() +  # No boundary lines between cells
+  scale_fill_gradientn(colors = my_colors, values = scales::rescale(breaks)) +  
+  labs(title = "Heatmap (All Frames)", x = "Time (s)", y = "Replicate") +
+  facet_grid(Sample ~ .) +  # Facet by Sample (Starved vs Fed)
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    plot.title = element_text(size = 16, face = "bold"),
+    legend.position = "bottom",
+    panel.grid = element_blank(), 
+    strip.background = element_blank(),  
+    strip.text = element_text(size = 14, face = "bold"),  
+    panel.spacing = unit(0, "lines")  
+  ) +
+  scale_x_continuous(breaks = seq(0, 120, by = 20)) # Custom x-axis labels for all frames
+
+# Save t
+ggsave("heatmap_all_framesw1.2_continuous_no_gap1.1_v2.png", plot = heatmap_all, width = 10, height = 6, dpi = 300)
+ggsave("heatmap_all_framesw1.2_continuous_no_gap1.1_v2.pdf", plot = heatmap_all, width = 10, height = 6)
+
+# For Rastor plot 
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Read data
+df <- read_csv("calcium_data_whole.csv")
+# Define peak threshold — adjust based on your data
+peak_threshold <- 0.6
+# Prepare data: filter peaks and convert replicate to numeric index
+df_peaks <- df %>%
+  filter(Normalized_Intensity >= peak_threshold) %>%
+  mutate(Sample = factor(Sample, levels = c("Starved", "Fed"))) %>%
+  arrange(Sample, Replicate) %>%
+  mutate(Replicate_Full = factor(paste(Sample, Replicate, sep = "_"))) %>%
+  mutate(Replicate_Index = as.numeric(factor(Replicate_Full, levels = unique(Replicate_Full))))
+# Minimalist peak-only raster 
+raster_peaks_fixed <- ggplot(df_peaks, aes(x = Time, y = Replicate_Index)) +
+  geom_linerange(aes(ymin = Replicate_Index - 0.4, ymax = Replicate_Index + 0.4),
+                 color = "grey10", linewidth = 0.3) +
+  scale_y_continuous(
+    breaks = unique(df_peaks$Replicate_Index),
+    labels = levels(df_peaks$Replicate_Full),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    title = "Grayscale Raster Plot: Peak Timing Only",
+    x = "Time (s)",
+    y = "Replicate"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_text(size = 11),
+    plot.title = element_text(size = 16, face = "bold"),
+    panel.grid = element_blank(),
+    legend.position = "none"
+  ) +
+  scale_x_continuous(breaks = seq(0, max(df$Time), by = 10))
+
+# Save 
+ggsave("raster_peak_lines_grey_fixed.png", plot = raster_peaks_fixed, width = 10, height = 6, dpi = 300)
+ggsave("raster_peak_lines_grey_fixed.pdf", plot = raster_peaks_fixed, width = 10, height = 6)     
