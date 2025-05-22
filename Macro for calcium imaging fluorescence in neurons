@@ -1,0 +1,75 @@
+requires("1.52p");
+// === USER SETTINGS ===
+roiSize = 20;
+stepSize = 10;
+baselineFrames = 5; // === custom ===
+outputFile = getDirectory("home") + "Calcium_Trace_Results.csv";
+// === STEP 1: RIGID MOTION CORRECTION ===
+run("Rigid Registration", "use");
+// === STEP 2: AUTOMATIC ROI SELECTION BASED ON SIGNAL VARIANCE ===
+getDimensions(width, height, channels, slices, frames);
+if (frames > 1) slices = frames;
+bestSD = -1;
+bestX = 0;
+bestY = 0;
+rawValues = newArray(slices);
+for (x = 0; x <= width - roiSize; x += stepSize) {
+    for (y = 0; y <= height - roiSize; y += stepSize) {
+        makeRectangle(x, y, roiSize, roiSize);
+        temp = newArray(slices);
+        for (z = 1; z <= slices; z++) {
+            setSlice(z);
+            getStatistics(area, mean);
+            temp[z - 1] = mean;
+        }
+
+        meanVal = 0;
+        for (i = 0; i < temp.length; i++) meanVal += temp[i];
+        meanVal /= temp.length;
+        sdVal = 0;
+        for (i = 0; i < temp.length; i++) sdVal += pow(temp[i] - meanVal, 2);
+        sdVal = sqrt(sdVal / temp.length);
+        if (sdVal > bestSD) {
+            bestSD = sdVal;
+            bestX = x;
+            bestY = y;
+            rawValues = temp;
+        }
+    }
+}
+// Highlight and save the best ROI
+makeRectangle(bestX, bestY, roiSize, roiSize);
+roiManager("Reset");
+roiManager("Add");
+roiManager("Select", 0);
+// === STEP 3: METRICS CALCULATION ===
+fmin = rawValues[0];
+fmax = rawValues[0];
+for (i = 1; i < slices; i++) {
+    if (rawValues[i] < fmin) fmin = rawValues[i];
+    if (rawValues[i] > fmax) fmax = rawValues[i];
+}
+
+f0 = 0;
+for (i = 0; i < baselineFrames; i++) f0 += rawValues[i];
+f0 /= baselineFrames;
+dfOverF = newArray(slices);
+fNorm = newArray(slices);
+for (i = 0; i < slices; i++) {
+    dfOverF[i] = (rawValues[i] - f0) / (f0 + 1e-6);
+    fNorm[i] = (rawValues[i] - fmin) / (fmax - fmin + 1e-6);
+}
+// === STEP 4: EXPORT TO CSV ===
+header = "Frame,Raw_F,DeltaF_F0,Fnorm_FmaxMin";
+print(header);
+for (i = 0; i < slices; i++) {
+    print((i + 1) + "," + rawValues[i] + "," + dfOverF[i] + "," + fNorm[i]);
+}
+saveAs("Results", outputFile);
+print("Saved: " + outputFile);
+// === STEP 5: QUICK PLOT OF ALL METRICS ===
+Plot.create("Calcium Signal Trace", "Frame", "Intensity", rawValues);
+Plot.setColor("black"); Plot.add("line", dfOverF);
+Plot.setColor("red"); Plot.add("line", fNorm);
+Plot.setColor("blue"); Plot.addLegend("Raw F\nΔF/F₀\nFnorm");
+Plot.show();
