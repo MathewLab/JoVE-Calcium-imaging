@@ -1,0 +1,108 @@
+requires(&quot;1.52p&quot;);
+
+// === USER SETTINGS ===
+roiSize = 20;
+stepSize = 10;
+baselineFrames = 10;
+outputFile = getDirectory(&quot;home&quot;) + &quot;Calcium_Trace_WithExtras.csv&quot;;
+
+// === STEP 1: MOTION CORRECTION ===
+run(&quot;Rigid Registration&quot;, &quot;use&quot;);
+
+// === STEP 2: USER-DRAWN BROAD ROI FOR SEARCHING ===
+waitForUser(&quot;Draw a broad rectangular ROI (e.g., brain lobe), then click OK.&quot;);
+roiManager(&quot;Reset&quot;);
+roiManager(&quot;Add&quot;);
+roiManager(&quot;Select&quot;, 0);
+roiBounds = getSelectionBounds(); // [x, y, width, height]
+roiX0 = roiBounds[0];
+roiY0 = roiBounds[1];
+roiW = roiBounds[2];
+roiH = roiBounds[3];
+
+// === STEP 3: SCAN FOR BEST ROI WITHIN SELECTED REGION ===
+getDimensions(width, height, channels, slices, frames);
+if (frames &gt; 1) slices = frames;
+
+bestSD = -1;
+
+bestX = 0;
+bestY = 0;
+rawValues = newArray(slices);
+
+for (x = roiX0; x &lt;= roiX0 + roiW - roiSize; x += stepSize) {
+for (y = roiY0; y &lt;= roiY0 + roiH - roiSize; y += stepSize) {
+makeRectangle(x, y, roiSize, roiSize);
+temp = newArray(slices);
+for (z = 1; z &lt;= slices; z++) {
+setSlice(z);
+getStatistics(area, mean);
+temp[z - 1] = mean;
+}
+
+meanVal = 0;
+for (i = 0; i &lt; temp.length; i++) meanVal += temp[i];
+meanVal /= temp.length;
+
+sdVal = 0;
+for (i = 0; i &lt; temp.length; i++) sdVal += pow(temp[i] - meanVal, 2);
+sdVal = sqrt(sdVal / temp.length);
+
+if (sdVal &gt; bestSD) {
+bestSD = sdVal;
+bestX = x;
+bestY = y;
+rawValues = temp;
+
+}
+}
+}
+
+// Highlight best ROI
+makeRectangle(bestX, bestY, roiSize, roiSize);
+roiManager(&quot;Reset&quot;);
+roiManager(&quot;Add&quot;);
+roiManager(&quot;Select&quot;, 0);
+
+// === STEP 4: METRICS CALCULATION ===
+fmin = rawValues[0];
+fmax = rawValues[0];
+for (i = 1; i &lt; slices; i++) {
+if (rawValues[i] &lt; fmin) fmin = rawValues[i];
+if (rawValues[i] &gt; fmax) fmax = rawValues[i];
+}
+
+f0 = 0;
+for (i = 0; i &lt; baselineFrames; i++) f0 += rawValues[i];
+f0 /= baselineFrames;
+
+dfOverF = newArray(slices);
+fNorm = newArray(slices);
+fMaxNorm = newArray(slices);
+df = newArray(slices);
+
+for (i = 0; i &lt; slices; i++) {
+df[i] = rawValues[i] - f0;
+dfOverF[i] = df[i] / (f0 + 1e-6);
+fNorm[i] = (rawValues[i] - fmin) / (fmax - fmin + 1e-6);
+fMaxNorm[i] = rawValues[i] / (fmax + 1e-6);
+}
+
+// === STEP 5: EXPORT TO CSV WITH EXTRA COLUMNS ===
+header = &quot;Frame,Raw_F,DeltaF,FmaxNorm,DeltaF_F0,Fnorm_FminFmax&quot;;
+print(header);
+for (i = 0; i &lt; slices; i++) {
+print((i+1) + &quot;,&quot; + rawValues[i] + &quot;,&quot; + df[i] + &quot;,&quot; + fMaxNorm[i] + &quot;,&quot; + dfOverF[i] + &quot;,&quot; +
+fNorm[i]);
+}
+saveAs(&quot;Results&quot;, outputFile);
+print(&quot;Saved to: &quot; + outputFile);
+
+// === STEP 6: PLOT ===
+Plot.create(&quot;Ca2+ Traces&quot;, &quot;Frame&quot;, &quot;Fluorescence&quot;, rawValues);
+Plot.setColor(&quot;black&quot;); Plot.add(&quot;line&quot;, df);
+Plot.setColor(&quot;red&quot;); Plot.add(&quot;line&quot;, dfOverF);
+Plot.setColor(&quot;blue&quot;); Plot.add(&quot;line&quot;, fNorm);
+Plot.setColor(&quot;green&quot;); Plot.add(&quot;line&quot;, fMaxNorm);
+Plot.addLegend(&quot;Raw F\nΔF\nΔF/F₀\nFnorm\nF/Fmax&quot;);
+Plot.show();
