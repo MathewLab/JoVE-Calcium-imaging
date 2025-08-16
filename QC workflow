@@ -1,0 +1,17 @@
+Manual QC workflow in ImajeJ
+1.	XY displacement check (lateral drift)
+•	After StackReg, play the movie back quickly (Image ▸ Stacks ▸ Tools ▸ Animation Options).
+•	Look for the ROI “sliding” relative to landmarks (tracheae, neuropil edges).
+•	If you see residual shifts that StackReg didn’t fix (jumps, frame jitter), flag that dataset.
+2.	Z-drift (focus/axial stability)
+•	Scroll through frames (or play movie) and watch for the structure going out of focus, blurring, or shrinking.
+•	Z-drift often looks like signal intensity fades and fine structure vanishes, then sometimes comes back.
+•	If the signal declines irreversibly → flag/exclude.
+3.	Signal quality / bleaching
+•	Plot the ROI trace (Analyze ▸ Plot Profile) or use the ROI Manager’s Multi-Measure.
+•	Check if baseline intensity drops steeply (>30%) over the recording.
+•	If signal decays to noise floor or fails to respond to stimulus → exclude.
+4.	Declining responses
+•	If you have stimulus epochs, check ΔF/F responses over time.
+•	If early trials are clear but responses vanish by the end → flag.
+
