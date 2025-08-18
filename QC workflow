@@ -15,3 +15,186 @@ Manual QC workflow in ImajeJ
 •	If you have stimulus epochs, check ΔF/F responses over time.
 •	If early trials are clear but responses vanish by the end → flag.
 
+
+macro "Calcium_QC_AutoExclude" {
+    // ---- 
+    Dialog.create("QC Settings");
+    Dialog.addDirectory("Input folder (time-lapse TIFFs):", "");
+    Dialog.addDirectory("Output folder:", "");
+    Dialog.addString("ROIset.zip (optional):", "");
+    Dialog.addNumber("Pixel size (µm/pixel):", 0.24); // <-- set your calibration
+    Dialog.addCheckbox("Run StackReg (rigid-body) before QC", true);
+    Dialog.addNumber("XY drift threshold (µm):", 1.0);
+    Dialog.addNumber("Signal decline threshold (%):", 30.0);
+    Dialog.addNumber("Focus drop threshold (%) [proxy for Z-drift]:", 50.0);
+    Dialog.addNumber("Smoothing window (frames) for signal:", 5);
+    Dialog.show();
+
+    inDir   = Dialog.getString();
+    outDir  = Dialog.getString();
+    roiPath = Dialog.getString();
+    pix_um  = Dialog.getNumber();
+    doSR    = Dialog.getCheckbox();
+    xy_um   = Dialog.getNumber();
+    sigDrop = Dialog.getNumber();
+    focusDrop = Dialog.getNumber();
+    smoothN = Dialog.getNumber();
+
+    if (inDir=="" || outDir=="") exit("Please set input and output folders.");
+
+    // Create subfolders
+    passDir = outDir + File.separator + "Passed" + File.separator;
+    failDir = outDir + File.separator + "Excluded" + File.separator;
+    File.makeDirectory(outDir);
+    File.makeDirectory(passDir);
+    File.makeDirectory(failDir);
+
+    // Load ROI if provided
+    haveROI = false;
+    if (roiPath != "" && File.exists(roiPath)) {
+        roiManager("Reset");
+        roiManager("Open", roiPath);
+        if (roiManager("count") > 0) haveROI = true;
+    }
+
+    // Prepare QC log
+    qcCSV = outDir + File.separator + "QC_log.csv";
+    File.saveString("file,frames,xy_um_max,xy_um_thresh,signal_drop_pct,signal_thresh,focus_drop_pct,focus_thresh,FAIL_XY,FAIL_SIG,FAIL_Z,QC_RESULT\n", qcCSV);
+
+    list = getFileList(inDir);
+    setBatchMode(true);
+    for (i=0; i<list.length; i++) {
+        if (endsWith(list[i], ".tif") || endsWith(list[i], ".tiff")) {
+            path = inDir + File.separator + list[i];
+            print("\\Clear");
+            print("Processing: " + path);
+            open(path);
+            id = getImageID();
+
+            // Optional: StackReg (rigid-body)
+            if (doSR) {
+                // Requires StackReg plugin available in Fiji
+                run("StackReg", "transformation=[Rigid Body]");
+            }
+
+            // Ensure measurements
+            run("Set Measurements...", "mean standard center redirect=None decimal=3");
+
+            // If ROIset exists, use first ROI; otherwise use full image
+            if (haveROI) {
+                roiManager("Select", 0);
+                Roi.getBounds(x, y, w, h);
+            } else {
+                makeRectangle(0, 0, getWidth(), getHeight());
+            }
+
+            // --- Metrics arrays ---
+            nSlices = nSlices();
+            Array.resize(meanTrace, nSlices);
+            Array.resize(focusTrace, nSlices);
+            Array.resize(xc, nSlices);
+            Array.resize(yc, nSlices);
+
+            // Reference frame (first slice) center-of-mass
+            setSlice(1);
+            run("Measure");
+            x_ref = getResult("XM", nResults-1);
+            y_ref = getResult("YM", nResults-1);
+
+            // Loop frames: fill metrics
+            for (s=1; s<=nSlices; s++) {
+                setSlice(s);
+                // Mean & COM
+                run("Measure");
+                meanTrace[s-1] = getResult("Mean", nResults-1);
+                xc[s-1] = getResult("XM", nResults-1);
+                yc[s-1] = getResult("YM", nResults-1);
+
+                // Focus proxy: std dev within ROI (higher = sharper)
+                // (We already measured "StdDev" with Set Measurements)
+                focusTrace[s-1] = getResult("StdDev", nResults-1);
+            }
+
+            // Smooth signal (moving average)
+            meanSm = movingAverage(meanTrace, smoothN);
+
+            // Compute signal drop % between early (first 10%) and late (last 10%)
+            earlyMed = segmentMedian(meanSm, 0, max(1, round(nSlices*0.1)));
+            lateMed  = segmentMedian(meanSm, max(1, round(nSlices*0.9)), nSlices);
+            sigDropPct = 100.0 * (earlyMed - lateMed) / earlyMed;
+
+            // Focus drop % (proxy for Z-drift)
+            fEarly = segmentMedian(focusTrace, 0, max(1, round(nSlices*0.1)));
+            fLate  = segmentMedian(focusTrace, max(1, round(nSlices*0.9)), nSlices);
+            focusDropPct = 100.0 * (fEarly - fLate) / fEarly;
+
+            // XY drift (max cumulative distance of COM from reference) in µm
+            maxDistPx = 0;
+            for (s=0; s<nSlices; s++) {
+                dx = xc[s] - x_ref;
+                dy = yc[s] - y_ref;
+                d  = sqrt(dx*dx + dy*dy);
+                if (d > maxDistPx) maxDistPx = d;
+            }
+            xy_um_max = maxDistPx * pix_um;
+
+            // Thresholds and flags
+            FAIL_XY  = (xy_um_max > xy_um) ? 1:0;
+            FAIL_SIG = (sigDropPct > sigDrop) ? 1:0;
+            FAIL_Z   = (focusDropPct > focusDrop) ? 1:0;
+
+            QC_RESULT = "PASS";
+            if (FAIL_XY + FAIL_SIG + FAIL_Z > 0) QC_RESULT = "FAIL";
+
+            // Save/Move
+            if (QC_RESULT=="FAIL") {
+                // move original to Excluded
+                close(id);
+                File.copy(path, failDir + list[i]);
+            } else {
+                // move original to Passed
+                close(id);
+                File.copy(path, passDir + list[i]);
+            }
+
+            // Log row
+            row = list[i] + "," + nSlices + "," + d2s(xy_um_max,3) + "," + d2s(xy_um,3) + "," +
+                  d2s(sigDropPct,1) + "," + d2s(sigDrop,1) + "," + d2s(focusDropPct,1) + "," + d2s(focusDrop,1) + "," +
+                  FAIL_XY + "," + FAIL_SIG + "," + FAIL_Z + "," + QC_RESULT + "\n";
+            File.append(row, qcCSV);
+        }
+    }
+    setBatchMode(false);
+    print("QC complete. Log saved to: " + qcCSV);
+}
+
+// ---------- Helper functions ----------
+
+function movingAverage(arr, w) {
+    n = arr.length;
+    out = newArray(n);
+    hw = floor(max(1,w)/2);
+    for (i=0; i<n; i++) {
+        sum=0; cnt=0;
+        for (k=-hw; k<=hw; k++) {
+            j = i + k;
+            if (j>=0 && j<n) { sum += arr[j]; cnt++; }
+        }
+        out[i] = sum/cnt;
+    }
+    return out;
+}
+
+function segmentMedian(arr, startIdx, endIdx) {
+    // startIdx inclusive, endIdx inclusive, both 1-based safe
+    n = arr.length;
+    a = newArray(0);
+    s = max(0, startIdx);
+    e = min(n-1, endIdx-1);
+    for (i=s; i<=e; i++) Array.append(a, arr[i]);
+    Array.sort(a);
+    m = floor(a.length/2);
+    if (a.length%2==0) return (a[m-1]+a[m])/2; else return a[m];
+}
+
+
