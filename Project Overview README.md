@@ -5,8 +5,11 @@ A method for calcium imaging in Drosophila larvae using tissue adhesive to hold 
 What's included:
 
 Immobilization technique with tissue adhesive
+
 Works with standard confocal microscopes
+
 Custom R scripts for analyzing calcium signals
+
 Low-cost setup
 
 What it does:
