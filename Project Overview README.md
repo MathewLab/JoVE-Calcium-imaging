@@ -1,5 +1,7 @@
 Drosophila Larval Calcium Imaging
+
 A method for calcium imaging in Drosophila larvae using tissue adhesive to hold samples still. Reduces motion problems during imaging.
+
 What's included:
 
 Immobilization technique with tissue adhesive
